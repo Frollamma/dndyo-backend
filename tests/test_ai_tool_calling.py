@@ -62,6 +62,11 @@ def test_stream_ai_response_resolves_tool_calls_and_streams(monkeypatch):
     monkeypatch.setattr(ai, "_run_placeholder_tool", fake_run_tool)
     monkeypatch.setattr(
         ai,
+        "_get_game_initial_prompt",
+        lambda game_id: f"Initial prompt for {game_id}",
+    )
+    monkeypatch.setattr(
+        ai,
         "_build_game_context_system_message",
         lambda game_id: f"Game context for {game_id}",
     )
@@ -87,7 +92,7 @@ def test_stream_ai_response_resolves_tool_calls_and_streams(monkeypatch):
     assert chat_calls[2]["stream"] is True
     first_messages = chat_calls[0]["messages"]
     assert first_messages[0]["role"] == "system"
-    assert first_messages[0]["content"] == ai.SYSTEM_PROMPT
+    assert first_messages[0]["content"] == "Initial prompt for 42"
     assert first_messages[1]["role"] == "system"
     assert first_messages[1]["content"] == "Game context for 42"
 

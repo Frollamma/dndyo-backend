@@ -9,6 +9,7 @@ from dndyo.app.models.game_state import GameStateCreate
 class GameBase(SQLModel):
     name: str = Field(description="Display name of the game/campaign.")
     owner_user: str = Field(description="Temporary owner identifier.")
+    ai_initial_prompt: str
     chapters: list[str] = Field(
         default_factory=list,
         sa_column=Column(JSON),

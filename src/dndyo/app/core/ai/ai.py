@@ -15,16 +15,6 @@ from dndyo.app.models.live_actor import LiveActor, LiveActorRole
 from dndyo.app.models.map import Map
 
 TOOLS = state_tools.TOOLS
-SYSTEM_PROMPT = (
-    "You are the Dungeon Master of a Dungeons & Dragons game. "
-    "Lead the game, narrate scenes, control pacing, and guide players through "
-    "decisions and outcomes. Don't take decisions or actions for them. "
-    "Be coincise but creative, answer in human tone, make the atmosphere interesting,"
-    "if asked say, but don't say too much. "
-    "You can access tools to inspect and update game state; use those tools when "
-    "needed to keep the game state accurate."
-    "Answer directly, you are the narrator voice, you don't need introductions"
-)
 SYSTEM_CONTEXT_PROMPT_PREFIX = "Game context for this run:"
 
 
@@ -114,6 +104,14 @@ def _build_game_context_system_message(game_id: int) -> str:
         f"{SYSTEM_CONTEXT_PROMPT_PREFIX}\n"
         f"{json.dumps(context_payload, ensure_ascii=True)}"
     )
+
+
+def _get_game_initial_prompt(game_id: int) -> str:
+    with Session(engine) as session:
+        game = session.exec(select(Game).where(Game.id == game_id)).first()
+        if game is None:
+            raise ValueError(f"Game {game_id} does not exist.")
+        return game.ai_initial_prompt
 
 
 def _build_client() -> Mistral:
@@ -299,11 +297,12 @@ def stream_ai_response(
     on_intermediate_message: Callable[[dict[str, Any]], None] | None = None,
 ) -> Iterator[str]:
     client = _build_client()
+    initial_prompt = _get_game_initial_prompt(game_id)
     context_prompt = _build_game_context_system_message(game_id)
     messages = _resolve_tool_calls(
         client,
         [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": initial_prompt},
             {"role": "system", "content": context_prompt},
             *history,
         ],

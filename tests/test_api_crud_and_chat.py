@@ -9,6 +9,7 @@ def _create_game(client) -> int:
         json={
             "name": "Campaign One",
             "owner_user": "owner-1",
+            "ai_initial_prompt": "Test DM prompt.",
             "chapters": ["c1", "c2"],
             "current_chapters": [],
         },
@@ -91,6 +92,7 @@ def test_game_create_accepts_initial_state(client):
         json={
             "name": "Campaign Two",
             "owner_user": "owner-2",
+            "ai_initial_prompt": "Initial prompt for campaign two.",
             "chapters": ["intro"],
             "current_chapters": [],
             "initial_state": {

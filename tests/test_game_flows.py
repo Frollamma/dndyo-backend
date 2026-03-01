@@ -13,6 +13,7 @@ def _create_game(client) -> int:
         json={
             "name": "Critical Path",
             "owner_user": "tester",
+            "ai_initial_prompt": "Test flow prompt.",
             "chapters": ["prologue"],
             "current_chapters": [],
         },
