@@ -35,9 +35,11 @@ class AbilityType(str, Enum):
 
 
 class ActorAbility(BaseModel):
-    name: str
-    description: str
-    ability_type: AbilityType
+    name: str = Field(description="Ability/spell/action name.")
+    description: str = Field(description="Human-readable ability behavior.")
+    ability_type: AbilityType = Field(
+        description="Ability category used by server logic (attack, healing, support, etc)."
+    )
 
 
 class ActorBase(SQLModel):
@@ -67,7 +69,11 @@ class ActorBase(SQLModel):
     controlled_by_user: bool = False
     can_fight: bool = False
     image_id: int = Field(foreign_key="image.id")
-    abilities: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    abilities: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+        description="Structured list of abilities/spells/actions available to this actor.",
+    )
 
 
 class Actor(ActorBase, table=True):

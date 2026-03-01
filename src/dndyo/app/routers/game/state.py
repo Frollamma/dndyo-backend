@@ -142,7 +142,15 @@ def update_world_state(
     return _read_state(session, game_id)
 
 
-@router.post("/attack-live-actor", response_model=LiveActorAttackRead)
+@router.post(
+    "/attack-live-actor",
+    response_model=LiveActorAttackRead,
+    summary="Attack A Live Actor",
+    description=(
+        "Roll attack and damage dice server-side against a target live actor. "
+        "The response includes raw roll, hit/critical info, applied damage, and remaining HP."
+    ),
+)
 def attack_live_actor(
     payload: LiveActorAttackCreate,
     game_id: int = Depends(require_game_id),

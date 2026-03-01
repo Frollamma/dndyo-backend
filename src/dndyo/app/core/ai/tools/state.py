@@ -120,6 +120,23 @@ def _get_or_create_state(session: Session, game_id: int) -> GameState:
 
 def _read_state(session: Session, game_id: int) -> dict[str, Any]:
     state = _get_or_create_state(session, game_id)
+    current_map = None
+    if state.current_map_id is not None:
+        db_map = session.exec(
+            select(Map).where(
+                col(Map.id) == state.current_map_id,
+                col(Map.game_id) == game_id,
+            )
+        ).first()
+        if db_map is not None:
+            current_map = {
+                "id": db_map.id,
+                "name": db_map.name,
+                "description": db_map.description,
+                "image_id": db_map.image_id,
+                "connected_maps_ids": db_map.connected_maps_ids,
+            }
+
     live_rows = session.exec(
         select(LiveActor)
         .where(LiveActor.game_id == game_id)
@@ -137,6 +154,7 @@ def _read_state(session: Session, game_id: int) -> dict[str, Any]:
             for row in live_rows
         ],
         "current_map_id": state.current_map_id,
+        "current_map": current_map,
         "world_state": state.world_state,
     }
 

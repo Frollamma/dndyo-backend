@@ -8,7 +8,12 @@ from dndyo.app.models.game_state import GameState
 router = APIRouter()
 
 
-@router.post("/", response_model=GameRead)
+@router.post(
+    "/",
+    response_model=GameRead,
+    summary="Create Game",
+    description="Create a game and its linked game state row.",
+)
 def create_game(
     game: GameCreate,
     session: Session = Depends(get_session),
@@ -29,12 +34,22 @@ def create_game(
     return db_game
 
 
-@router.get("/", response_model=list[GameRead])
+@router.get(
+    "/",
+    response_model=list[GameRead],
+    summary="List Games",
+    description="List all games.",
+)
 def list_games(session: Session = Depends(get_session)):
     return session.exec(select(Game)).all()
 
 
-@router.get("/{game_id}", response_model=GameRead)
+@router.get(
+    "/{game_id}",
+    response_model=GameRead,
+    summary="Get Game",
+    description="Return a single game by id.",
+)
 def get_game(
     game_id: int,
     session: Session = Depends(get_session),
