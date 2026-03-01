@@ -13,6 +13,10 @@ class LiveActorBase(SQLModel):
     actor_id: int = Field(foreign_key="actor.id")
     current_hp: int = Field(ge=0)
     state: str
+    background: str = Field(
+        default="",
+        description="Unique description and history for this live actor.",
+    )
     role: LiveActorRole
 
 

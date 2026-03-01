@@ -22,7 +22,7 @@ def _schema_compatible() -> bool:
         "actor": {"id", "game_id", "abilities"},
         "chatmessage": {"id", "game_id"},
         "gamestate": {"id"},
-        "liveactor": {"id", "game_id"},
+        "liveactor": {"id", "game_id", "background"},
         "map": {"id", "game_id"},
         "image": {"id", "uri"},
     }

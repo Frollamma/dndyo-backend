@@ -43,6 +43,7 @@ def _build_read(state: GameState, live_rows: Sequence[LiveActor]) -> GameStateRe
             actor_id=row.actor_id,
             current_hp=row.current_hp,
             state=row.state,
+            background=row.background,
             role=row.role,
         )
         live_actors.append(live_actor)
@@ -96,6 +97,7 @@ def update_live_actors(
                 actor_id=actor.actor_id,
                 current_hp=actor.current_hp,
                 state=actor.state,
+                background=actor.background,
                 role=actor.role,
                 game_id=game_id,
             )

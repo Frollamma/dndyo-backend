@@ -27,6 +27,30 @@ def test_game_create_and_read_endpoints(client):
     assert payload[0]["id"] == game_id
 
 
+def test_game_create_accepts_initial_state(client):
+    response = client.post(
+        "/api/game/",
+        json={
+            "name": "Campaign Two",
+            "owner_user": "owner-2",
+            "chapters": ["intro"],
+            "current_chapters": [],
+            "initial_state": {
+                "world_state": "The tavern is crowded and loud.",
+                "current_map_id": None,
+                "live_actors": [],
+            },
+        },
+    )
+    assert response.status_code == 200
+    game_id = response.json()["id"]
+
+    state = client.get(f"/api/game/{game_id}/state")
+    assert state.status_code == 200
+    assert state.json()["world_state"] == "The tavern is crowded and loud."
+    assert state.json()["live_actors"] == []
+
+
 def test_state_update_and_read(client):
     game_id = _create_game(client)
 

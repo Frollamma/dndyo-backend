@@ -38,6 +38,10 @@ TOOLS = [
                     "actor_id": {"type": "integer", "minimum": 1},
                     "current_hp": {"type": "integer", "minimum": 0},
                     "state": {"type": "string"},
+                    "background": {
+                        "type": "string",
+                        "description": "Unique description/history for this live actor.",
+                    },
                     "role": {
                         "type": "string",
                         "description": "Must be 'enemy' or 'Enemy' for now.",
@@ -150,6 +154,7 @@ def _read_state(session: Session, game_id: int) -> dict[str, Any]:
                 "current_hp": row.current_hp,
                 "state": row.state,
                 "role": row.role.value,
+                "background": row.background,
             }
             for row in live_rows
         ],
@@ -181,6 +186,7 @@ def create_live_actor(args: dict[str, Any], *, game_id: int) -> dict[str, Any]:
     actor_id = int(args["actor_id"])
     current_hp = int(args["current_hp"])
     state_text = str(args["state"])
+    background = str(args.get("background", ""))
     role = _parse_role(args.get("role", "enemy"))
 
     if role != LiveActorRole.enemy:
@@ -202,6 +208,7 @@ def create_live_actor(args: dict[str, Any], *, game_id: int) -> dict[str, Any]:
             actor_id=actor_id,
             current_hp=current_hp,
             state=state_text,
+            background=background,
             role=role,
             game_id=game_id,
         )
@@ -214,6 +221,7 @@ def create_live_actor(args: dict[str, Any], *, game_id: int) -> dict[str, Any]:
                 "actor_id": live_actor.actor_id,
                 "current_hp": live_actor.current_hp,
                 "state": live_actor.state,
+                "background": live_actor.background,
                 "role": live_actor.role.value,
             }
         }

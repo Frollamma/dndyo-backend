@@ -60,6 +60,7 @@ def _seed_actor_and_live_actor(test_engine, game_id: int, *, hp: int = 20, ac: i
             actor_id=actor.id,
             current_hp=hp,
             state="Alert",
+            background="A snarling goblin scout from the eastern caves.",
             role=LiveActorRole.enemy,
         )
         session.add(live_actor)
@@ -67,6 +68,42 @@ def _seed_actor_and_live_actor(test_engine, game_id: int, *, hp: int = 20, ac: i
         session.refresh(live_actor)
         assert live_actor.id is not None
         return live_actor.id
+
+
+def _seed_actor(test_engine, game_id: int, *, hp: int = 20, ac: int = 12) -> int:
+    with Session(test_engine) as session:
+        image = Image(uri="https://example.com/ranger.png")
+        session.add(image)
+        session.commit()
+        session.refresh(image)
+        assert image.id is not None
+
+        actor = Actor(
+            game_id=game_id,
+            name="Ranger",
+            level=3,
+            armor_class=ac,
+            hit_points=hp,
+            speed=30,
+            strength=10,
+            dexterity=16,
+            constitution=12,
+            intelligence=10,
+            wisdom=14,
+            charisma=10,
+            proficiency_bonus=2,
+            size=Size.medium,
+            alignment=Alignment.neutral_good,
+            controlled_by_user=True,
+            can_fight=True,
+            image_id=image.id,
+            abilities=[],
+        )
+        session.add(actor)
+        session.commit()
+        session.refresh(actor)
+        assert actor.id is not None
+        return actor.id
 
 
 def test_create_game_and_default_state(client):
@@ -133,6 +170,32 @@ def test_update_live_actors_rejects_unknown_actor(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == f"Actor 9999 does not exist in game {game_id}."
+
+
+def test_update_live_actors_persists_background(client, test_engine):
+    game_id = _create_game(client)
+    actor_id = _seed_actor(test_engine, game_id)
+
+    response = client.put(
+        f"/api/game/{game_id}/state/live-actors",
+        json={
+            "live_actors": [
+                {
+                    "actor_id": actor_id,
+                    "current_hp": 17,
+                    "state": "Watching the treeline",
+                    "background": "Veteran scout who survived the Blackfen war.",
+                    "role": "Player",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["live_actors"][0]["background"] == (
+        "Veteran scout who survived the Blackfen war."
+    )
 
 
 def test_attack_live_actor_hit_applies_damage(client, test_engine, monkeypatch):

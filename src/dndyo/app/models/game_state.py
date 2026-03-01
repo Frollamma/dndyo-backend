@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field as PydanticField
 from sqlalchemy import Column, String
 from sqlmodel import Field, SQLModel
 
@@ -16,6 +16,12 @@ class GameStateBase(SQLModel):
 class GameState(GameStateBase, table=True):
     # `id` is the owning game id (GameState.id == Game.id).
     id: int = Field(primary_key=True, foreign_key="game.id")
+
+
+class GameStateCreate(BaseModel):
+    live_actors: list[LiveActorCreate] = PydanticField(default_factory=list)
+    current_map_id: int | None = None
+    world_state: str = ""
 
 
 class GameStateRead(BaseModel):

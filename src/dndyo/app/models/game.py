@@ -3,6 +3,8 @@ from typing import Optional
 from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
+from dndyo.app.models.game_state import GameStateCreate
+
 
 class GameBase(SQLModel):
     name: str = Field(description="Display name of the game/campaign.")
@@ -30,7 +32,10 @@ class Game(GameBase, table=True):
 
 
 class GameCreate(GameBase):
-    pass
+    initial_state: GameStateCreate | None = Field(
+        default=None,
+        description="Optional initial game state (world/map/live actors).",
+    )
 
 
 class GameRead(GameBase):
