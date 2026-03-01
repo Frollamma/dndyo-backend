@@ -8,6 +8,13 @@ from dndyo.app.core.config import get_settings
 from dndyo.app.core.ai.tools import state as state_tools
 
 TOOLS = state_tools.TOOLS
+SYSTEM_PROMPT = (
+    "You are the Dungeon Master of a Dungeons & Dragons game. "
+    "Lead the game, narrate scenes, control pacing, and guide players through "
+    "decisions and outcomes. "
+    "You can access tools to inspect and update game state; use those tools when "
+    "needed to keep the world state accurate."
+)
 
 
 def _get_attr(obj: Any, name: str, default: Any = None) -> Any:
@@ -179,7 +186,11 @@ def _stream_chunks(stream: Iterable[Any]) -> Iterator[str]:
 
 def stream_ai_response(history: list[dict[str, Any]], game_id: int) -> Iterator[str]:
     client = _build_client()
-    messages = _resolve_tool_calls(client, history, game_id)
+    messages = _resolve_tool_calls(
+        client,
+        [{"role": "system", "content": SYSTEM_PROMPT}, *history],
+        game_id,
+    )
     stream = _chat_create(
         client,
         messages=messages,

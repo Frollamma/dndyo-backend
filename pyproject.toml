@@ -6,16 +6,19 @@ readme = "README.md"
 authors = [{ name = "frollo", email = "flagging out" }]
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.134.0",
-    "mistralai>=1.12.4",
-    "pydantic>=2.12.5",
-    "pydantic-settings>=2.13.1",
-    "sqlmodel>=0.0.37",
-    "uvicorn>=0.41.0",
+  "fastapi>=0.134.0",
+  "mistralai>=1.12.4",
+  "pydantic>=2.12.5",
+  "pydantic-settings>=2.13.1",
+  "sqlmodel>=0.0.37",
+  "uvicorn>=0.41.0",
 ]
 
 [project.scripts]
 dndyo = "dndyo.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.4.0"]
 
 [build-system]
 requires = ["uv_build>=0.10.3,<0.11.0"]
