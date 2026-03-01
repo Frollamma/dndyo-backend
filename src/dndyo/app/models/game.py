@@ -10,6 +10,8 @@ class GameBase(SQLModel):
     name: str = Field(description="Display name of the game/campaign.")
     owner_user: str = Field(description="Temporary owner identifier.")
     ai_initial_prompt: str
+    # Optional image representing the game/campaign (cover art, banner, etc).
+    image_id: Optional[int] = Field(default=None, foreign_key="image.id")
     chapters: list[str] = Field(
         default_factory=list,
         sa_column=Column(JSON),

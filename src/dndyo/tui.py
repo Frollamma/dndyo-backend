@@ -154,7 +154,7 @@ def _seed_image(uri: str) -> int:
 
 
 def _create_actor(
-    client: httpx.Client, game_id: int, *, name: str, role: str, image_id: int
+    client: httpx.Client, game_id: int, *, name: str, role: str, image_id: int | None = None
 ) -> int:
     actor_payload = {
         "name": name,
@@ -195,7 +195,7 @@ def _seed_map(
     *,
     game_id: int,
     name: str,
-    image_id: int,
+    image_id: int | None = None,
     connected_maps_ids: list[int] | None = None,
 ) -> int:
     with Session(engine) as session:

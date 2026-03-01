@@ -68,7 +68,8 @@ class ActorBase(SQLModel):
     # Game stuff
     controlled_by_user: bool = False
     can_fight: bool = False
-    image_id: int = Field(foreign_key="image.id")
+    # Optional image associated with this actor.
+    image_id: Optional[int] = Field(default=None, foreign_key="image.id")
     abilities: list[ActorAbility] = Field(
         default_factory=list,
         sa_column=Column(JSON),

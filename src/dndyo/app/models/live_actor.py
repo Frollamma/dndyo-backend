@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import List
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Column
+from pydantic import field_validator
 from dndyo.app.models.inventory_object import InventoryObject
 from sqlmodel import SQLModel, Field
 
@@ -20,7 +21,46 @@ class LiveActorBase(SQLModel):
         description="Unique description and history for this live actor.",
     )
     role: LiveActorRole
-    inventory: List[InventoryObject] = Field(default_factory=list, sa_type=JSON)
+    # Store inventory as JSON in the DB. InventoryObject instances will be
+    # converted to plain dicts by Pydantic when serializing via SQLModel.
+    inventory: List[InventoryObject] = Field(
+        default_factory=list, sa_column=Column(JSON)
+    )
+
+    @field_validator("inventory", mode="before")
+    def _coerce_inventory(v):
+        """Ensure inventory entries are primitive-serializable (dicts) before DB storage.
+
+        Accepts InventoryObject instances (from tests) and converts them to dicts.
+        """
+        if v is None:
+            return []
+        coerced = []
+        for item in v:
+            if hasattr(item, "model_dump"):
+                coerced.append(item.model_dump())
+            elif hasattr(item, "dict"):
+                # pydantic v1 compatibility
+                coerced.append(item.dict())
+            else:
+                coerced.append(item)
+        return coerced
+
+    def __init__(self, **data):
+        # Ensure inventory entries are converted to primitive dicts when
+        # constructing the model (covers direct instantiation in tests).
+        inv = data.get("inventory")
+        if inv is not None:
+            coerced = []
+            for item in inv:
+                if hasattr(item, "model_dump"):
+                    coerced.append(item.model_dump())
+                elif hasattr(item, "dict"):
+                    coerced.append(item.dict())
+                else:
+                    coerced.append(item)
+            data["inventory"] = coerced
+        super().__init__(**data)
 
 
 class LiveActor(LiveActorBase, table=True):

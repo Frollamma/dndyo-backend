@@ -7,7 +7,8 @@ from sqlmodel import Field, SQLModel
 class MapBase(SQLModel):
     name: str
     description: int
-    image_id: int = Field(foreign_key="image.id")
+    # Optional image for the map.
+    image_id: Optional[int] = Field(default=None, foreign_key="image.id")
     connected_maps_ids: List[int] = Field(
         default_factory=list,
         sa_column=Column(JSON),
