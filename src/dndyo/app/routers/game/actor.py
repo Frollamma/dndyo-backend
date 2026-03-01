@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 from dndyo.app.models.actor import Actor, ActorCreate, ActorRead
 from dndyo.app.core.db import get_session
 from dndyo.app.routers.game.deps import require_game_id
@@ -20,3 +20,13 @@ def create_actor(
     session.commit()
     session.refresh(db_actor)
     return db_actor
+
+
+@router.get("/actors", response_model=list[ActorRead])
+def list_actors(
+    game_id: int = Depends(require_game_id),
+    session: Session = Depends(get_session),
+):
+    return session.exec(
+        select(Actor).where(col(Actor.game_id) == game_id).order_by(col(Actor.id))
+    ).all()

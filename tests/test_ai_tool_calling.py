@@ -21,10 +21,8 @@ def test_stream_ai_response_resolves_tool_calls_and_streams(monkeypatch):
                             "id": "call-1",
                             "type": "function",
                             "function": {
-                                "name": "change_world_state",
-                                "arguments": json.dumps(
-                                    {"description": "Rain begins"}
-                                ),
+                                "name": "change_environment_description",
+                                "arguments": json.dumps({"description": "Rain begins"}),
                             },
                         }
                     ],
@@ -78,7 +76,7 @@ def test_stream_ai_response_resolves_tool_calls_and_streams(monkeypatch):
     assert result == "Final answer"
     assert tool_calls_seen == [
         (
-            "change_world_state",
+            "change_environment_description",
             '{"description": "Rain begins"}',
             42,
         )

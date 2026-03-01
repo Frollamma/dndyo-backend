@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session, col, delete, func, select
 
@@ -12,6 +12,7 @@ from dndyo.app.models.chat import (
     MessageRole,
     MistralMessage,
 )
+from dndyo.app.models.live_actor import LiveActor
 from dndyo.app.routers.game.deps import require_game_id
 
 router = APIRouter()
@@ -22,6 +23,7 @@ def _to_read(message: ChatMessage) -> ChatMessageRead:
         raise ValueError("Chat message ID was not generated.")
     return ChatMessageRead(
         id=message.id,
+        sender_id=message.sender_id,
         message=MistralMessage(
             role=message.role,
             content=message.content,
@@ -64,10 +66,39 @@ def add_message(
     game_id: int = Depends(require_game_id),
     session: Session = Depends(get_session),
 ):
+    if payload.message.role == MessageRole.user and payload.sender_id is None:
+        content = payload.message.content.strip()
+        if content.startswith("Dev:"):
+            pass
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "sender_id is required for user messages unless content starts "
+                    "with 'Dev:'."
+                ),
+            )
+
+    if payload.sender_id is not None:
+        live_actor = session.exec(
+            select(LiveActor).where(
+                col(LiveActor.id) == payload.sender_id,
+                col(LiveActor.game_id) == game_id,
+            )
+        ).first()
+        if live_actor is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Live actor {payload.sender_id} does not exist in game {game_id}."
+                ),
+            )
+
     db_message = ChatMessage(
         role=payload.message.role,
         content=payload.message.content,
         game_id=game_id,
+        sender_id=payload.sender_id,
     )
     session.add(db_message)
     session.commit()
@@ -85,10 +116,15 @@ def add_ai_message(
         .where(ChatMessage.game_id == game_id)
         .order_by(col(ChatMessage.id))
     ).all()
-    history = [{"role": row.role.value, "content": row.content} for row in history_rows]
+    history = [
+        {"role": row.role.value, "content": row.content}
+        for row in history_rows
+        if row.role in {MessageRole.system, MessageRole.user, MessageRole.assistant}
+    ]
 
     def _stream():
         full_response: list[str] = []
+
         try:
             for chunk in stream_ai_response(history, game_id=game_id):
                 full_response.append(chunk)

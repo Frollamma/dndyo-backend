@@ -11,16 +11,17 @@ from dndyo.app.helpers.battle import (
     calculate_damage_from_roll,
     resolve_attack_roll,
 )
-from dndyo.app.models.actor import Actor
+from dndyo.app.models.actor import Actor, ActorRead
 from dndyo.app.models.battle import LiveActorAttackCreate, LiveActorAttackRead
 from dndyo.app.models.game_state import (
     CurrentMapUpdate,
     GameState,
     GameStateRead,
+    LiveActorWithDataRead,
     LiveActorsUpdate,
-    WorldStateUpdate,
+    EnvironmentDescriptionUpdate,
 )
-from dndyo.app.models.live_actor import LiveActor, LiveActorCreate
+from dndyo.app.models.live_actor import LiveActor
 from dndyo.app.models.map import Map
 from dndyo.app.routers.game.deps import require_game_id
 
@@ -31,7 +32,9 @@ def _get_or_create_state(session: Session, game_id: int) -> GameState:
     default_map_id = ensure_game_has_map(session, game_id)
     state = session.exec(select(GameState).where(col(GameState.id) == game_id)).first()
     if state is None:
-        state = GameState(id=game_id, world_state="", current_map_id=default_map_id)
+        state = GameState(
+            id=game_id, environment_description="", current_map_id=default_map_id
+        )
         session.add(state)
         session.commit()
         session.refresh(state)
@@ -51,36 +54,48 @@ def _get_or_create_state(session: Session, game_id: int) -> GameState:
     return state
 
 
-def _build_read(state: GameState, live_rows: Sequence[LiveActor]) -> GameStateRead:
+def _build_read(
+    state: GameState, live_rows: Sequence[tuple[LiveActor, Actor]]
+) -> GameStateRead:
     live_actors = []
-    for row in live_rows:
-        live_actor = LiveActorCreate(
-            actor_id=row.actor_id,
-            current_hp=row.current_hp,
-            state=row.state,
-            background=row.background,
-            role=row.role,
+    for live_row, actor_row in live_rows:
+        if live_row.id is None:
+            raise ValueError("Live actor ID was not generated.")
+        if actor_row.id is None:
+            raise ValueError("Actor ID was not generated.")
+        live_actor = LiveActorWithDataRead(
+            id=live_row.id,
+            actor_id=live_row.actor_id,
+            current_hp=live_row.current_hp,
+            state=live_row.state,
+            background=live_row.background,
+            role=live_row.role,
+            actor=ActorRead.model_validate(actor_row.model_dump(mode="json")),
         )
         live_actors.append(live_actor)
     return GameStateRead(
         live_actors=live_actors,
         current_map_id=state.current_map_id,
-        world_state=state.world_state,
+        environment_description=state.environment_description,
     )
 
 
 def _read_state(session: Session, game_id: int) -> GameStateRead:
     state = _get_or_create_state(session, game_id)
     live_rows = session.exec(
-        select(LiveActor)
-        .where(LiveActor.game_id == game_id)
+        select(LiveActor, Actor)
+        .join(Actor, Actor.id == LiveActor.actor_id)
+        .where(
+            LiveActor.game_id == game_id,
+            Actor.game_id == game_id,
+        )
         .order_by(col(LiveActor.id))
     ).all()
     return _build_read(state, live_rows)
 
 
 @router.get("", response_model=GameStateRead)
-def get_state(
+def get_game_state(
     game_id: int = Depends(require_game_id),
     session: Session = Depends(get_session),
 ):
@@ -145,14 +160,14 @@ def update_current_map(
     return _read_state(session, game_id)
 
 
-@router.patch("/world-state", response_model=GameStateRead)
-def update_world_state(
-    payload: WorldStateUpdate,
+@router.patch("/environment-description", response_model=GameStateRead)
+def update_environment_description(
+    payload: EnvironmentDescriptionUpdate,
     game_id: int = Depends(require_game_id),
     session: Session = Depends(get_session),
 ):
     state = _get_or_create_state(session, game_id)
-    state.world_state = payload.world_state
+    state.environment_description = payload.environment_description
     session.add(state)
     session.commit()
     return _read_state(session, game_id)
@@ -225,7 +240,9 @@ def attack_live_actor(
         session.refresh(live_actor)
 
     return LiveActorAttackRead(
-        live_actor_id=live_actor.id if live_actor.id is not None else payload.live_actor_id,
+        live_actor_id=(
+            live_actor.id if live_actor.id is not None else payload.live_actor_id
+        ),
         actor_id=live_actor.actor_id,
         attack_roll=attack_roll,
         total_to_hit=attack_result.total_to_hit,

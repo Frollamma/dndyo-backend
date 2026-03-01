@@ -26,9 +26,11 @@ def _request(
     return response
 
 
-def _stream_request(client: httpx.Client, method: str, path: str):
+def _stream_request(
+    client: httpx.Client, method: str, path: str, *, timeout: float | None = None
+):
     try:
-        with client.stream(method, path) as response:
+        with client.stream(method, path, timeout=timeout) as response:
             if response.status_code >= 400:
                 detail = response.text
                 raise RuntimeError(
@@ -189,14 +191,20 @@ def _create_actor(
     return int(response.json()["id"])
 
 
-def _seed_map(*, game_id: int, name: str, image_id: int) -> int:
+def _seed_map(
+    *,
+    game_id: int,
+    name: str,
+    image_id: int,
+    connected_maps_ids: list[int] | None = None,
+) -> int:
     with Session(engine) as session:
         db_map = Map(
             game_id=game_id,
             name=name,
             description=0,
             image_id=image_id,
-            connected_maps_ids=[],
+            connected_maps_ids=connected_maps_ids or [],
         )
         session.add(db_map)
         session.commit()
@@ -221,7 +229,7 @@ def _seed_game(client: httpx.Client) -> int:
             ],
             "current_chapters": ["Chapter 1: Smoke Over Blackridge"],
             "initial_state": {
-                "world_state": "Ash is drifting across Blackridge. The keep bells are silent.",
+                "environment_description": "Ash is drifting across Blackridge. The keep bells are silent.",
                 "live_actors": [],
             },
         },
@@ -230,6 +238,8 @@ def _seed_game(client: httpx.Client) -> int:
 
     image_ids = [
         _seed_image("https://example.com/blackridge-gate-map.png"),
+        _seed_image("https://example.com/ember-market-map.png"),
+        _seed_image("https://example.com/cinder-catacombs-map.png"),
         _seed_image("https://example.com/lyra.png"),
         _seed_image("https://example.com/dorn.png"),
         _seed_image("https://example.com/goblin.png"),
@@ -240,7 +250,31 @@ def _seed_game(client: httpx.Client) -> int:
         game_id=game_id,
         name="Blackridge Gate",
         image_id=image_ids[0],
+        connected_maps_ids=[],
     )
+    ember_market_map_id = _seed_map(
+        game_id=game_id,
+        name="Ember Market",
+        image_id=image_ids[1],
+        connected_maps_ids=[blackridge_gate_map_id],
+    )
+    cinder_catacombs_map_id = _seed_map(
+        game_id=game_id,
+        name="Cinder Catacombs",
+        image_id=image_ids[2],
+        connected_maps_ids=[blackridge_gate_map_id],
+    )
+    with Session(engine) as session:
+        blackridge_gate_map = session.get(Map, blackridge_gate_map_id)
+        if blackridge_gate_map is None:
+            raise RuntimeError("Initial map row was not found after seeding.")
+        blackridge_gate_map.connected_maps_ids = [
+            ember_market_map_id,
+            cinder_catacombs_map_id,
+        ]
+        session.add(blackridge_gate_map)
+        session.commit()
+
     _request(
         client,
         "PATCH",
@@ -249,16 +283,16 @@ def _seed_game(client: httpx.Client) -> int:
     )
 
     lyra_id = _create_actor(
-        client, game_id, name="Lyra Voss", role="Player", image_id=image_ids[1]
+        client, game_id, name="Lyra Voss", role="Player", image_id=image_ids[3]
     )
     dorn_id = _create_actor(
-        client, game_id, name="Dorn Hale", role="Player", image_id=image_ids[2]
+        client, game_id, name="Dorn Hale", role="Player", image_id=image_ids[4]
     )
     goblin_id = _create_actor(
-        client, game_id, name="Skreek", role="Enemy", image_id=image_ids[3]
+        client, game_id, name="Skreek", role="Enemy", image_id=image_ids[5]
     )
     wolf_id = _create_actor(
-        client, game_id, name="Ashfang", role="Enemy", image_id=image_ids[4]
+        client, game_id, name="Ashfang", role="Enemy", image_id=image_ids[6]
     )
 
     _request(
@@ -308,6 +342,10 @@ def _seed_game(client: httpx.Client) -> int:
     print("Enemies:")
     print("  - Skreek: Raider from the red-claw tribe, loyal only to coin.")
     print("  - Ashfang: War-trained dire wolf scarred by years of sieges.")
+    print("Maps:")
+    print("  - Blackridge Gate (connected to Ember Market, Cinder Catacombs)")
+    print("  - Ember Market (connected to Blackridge Gate)")
+    print("  - Cinder Catacombs (connected to Blackridge Gate)")
     return game_id
 
 
@@ -318,7 +356,45 @@ def _print_help():
     print("  /history  Print chat history")
     print("  /ai       Run AI on current chat history")
     print("  /quit     Exit")
-    print("Any other text sends a user chat message.")
+    print("Any other text sends a chat message in format: Name: message")
+    print("Examples: Dev: hello, Lyra: scouting ahead, Agent2: move left")
+
+
+def _parse_chat_input(user_input: str) -> tuple[str, str]:
+    if ":" not in user_input:
+        raise ValueError("Message format must be: Name: message")
+    sender_name, content = user_input.split(":", 1)
+    sender_name = sender_name.strip()
+    content = content.strip()
+    if not sender_name or not content:
+        raise ValueError("Message format must be: Name: message")
+    return sender_name, content
+
+
+def _build_sender_alias_map(
+    client: httpx.Client, game_id: int
+) -> dict[str, tuple[int, str]]:
+    state = _request(client, "GET", f"/api/game/{game_id}/state").json()
+    actors = _request(client, "GET", f"/api/game/{game_id}/actor/actors").json()
+
+    actor_name_by_id: dict[int, str] = {
+        int(actor["id"]): str(actor["name"]) for actor in actors
+    }
+    aliases: dict[str, tuple[int, str]] = {}
+    live_actors = state.get("live_actors", [])
+    for index, live_actor in enumerate(live_actors, start=1):
+        live_actor_id = int(live_actor["id"])
+        actor_id = int(live_actor["actor_id"])
+        full_name = actor_name_by_id.get(actor_id, "")
+        short_name = full_name.split()[0] if full_name else ""
+
+        fallback_name = full_name if full_name else f"Agent{index}"
+        aliases[f"agent{index}".lower()] = (live_actor_id, fallback_name)
+        if full_name:
+            aliases[full_name.lower()] = (live_actor_id, full_name)
+        if short_name:
+            aliases[short_name.lower()] = (live_actor_id, full_name)
+    return aliases
 
 
 def main():
@@ -327,6 +403,7 @@ def main():
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     init_db()
     base_url = os.environ.get("DNDYO_API_URL", "http://127.0.0.1:8000")
+    ai_timeout_seconds = float(os.environ.get("DNDYO_AI_TIMEOUT_SECONDS", "60"))
 
     with httpx.Client(base_url=base_url, timeout=60.0) as client:
         _request(client, "GET", "/health")
@@ -360,7 +437,10 @@ def main():
             if user_input == "/ai":
                 try:
                     _stream_request(
-                        client, "POST", f"/api/game/{game_id}/chat/run-ai"
+                        client,
+                        "POST",
+                        f"/api/game/{game_id}/chat/run-ai",
+                        timeout=ai_timeout_seconds,
                     )
                 except RuntimeError as exc:
                     print(f"ai-error> {exc}")
@@ -370,10 +450,34 @@ def main():
                 print("Unknown command. Use /help.")
                 continue
 
+            try:
+                sender_name, content = _parse_chat_input(user_input)
+                role = "user"
+                sender_id: int | None = None
+                final_content = content
+                if sender_name.lower() == "dev":
+                    final_content = f"Dev: {content}"
+                else:
+                    aliases = _build_sender_alias_map(client, game_id)
+                    sender = aliases.get(sender_name.lower())
+                    if sender is None:
+                        raise ValueError(
+                            f"Unknown sender '{sender_name}'. "
+                            "Use a live actor short name like 'Lyra' or an alias like 'Agent2'."
+                        )
+                    sender_id, full_name = sender
+                    final_content = f"{full_name}: {content}"
+            except ValueError as exc:
+                print(f"input-error> {exc}")
+                continue
+
             _request(
                 client,
                 "POST",
                 f"/api/game/{game_id}/chat/message",
-                {"message": {"role": "user", "content": user_input}},
+                {
+                    "sender_id": sender_id,
+                    "message": {"role": role, "content": final_content},
+                },
             )
             print("saved.")

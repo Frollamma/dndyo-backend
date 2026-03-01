@@ -8,6 +8,7 @@ class MessageRole(str, Enum):
     system = "system"
     user = "user"
     assistant = "assistant"
+    tool = "tool"
 
 
 class MistralMessage(BaseModel):
@@ -23,14 +24,17 @@ class ChatMessageBase(SQLModel):
 class ChatMessage(ChatMessageBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     game_id: int = Field(foreign_key="game.id", index=True)
+    sender_id: int | None = Field(default=None, foreign_key="liveactor.id")
 
 
 class ChatMessageCreate(BaseModel):
+    sender_id: int | None = None
     message: MistralMessage
 
 
 class ChatMessageRead(BaseModel):
     id: int
+    sender_id: int | None = None
     message: MistralMessage
 
 

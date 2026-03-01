@@ -82,9 +82,8 @@ class Actor(ActorBase, table=True):
 
 
 class ActorCreate(ActorBase):
-    abilities: list[ActorAbility] = Field(default_factory=list)
+    pass
 
 
 class ActorRead(ActorBase):
     id: int
-    abilities: list[ActorAbility] = Field(default_factory=list)

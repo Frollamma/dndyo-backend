@@ -20,7 +20,7 @@ def _schema_compatible() -> bool:
     required_columns = {
         "game": {"id", "name", "owner_user", "game_state_id", "chapters", "current_chapters"},
         "actor": {"id", "game_id", "abilities"},
-        "chatmessage": {"id", "game_id"},
+        "chatmessage": {"id", "game_id", "sender_id"},
         "gamestate": {"id"},
         "liveactor": {"id", "game_id", "background"},
         "map": {"id", "game_id"},

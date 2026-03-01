@@ -37,7 +37,9 @@ def create_game(
     )
     db_state = GameState(
         id=db_game.id,
-        world_state=initial_state.world_state if initial_state else "",
+        environment_description=(
+            initial_state.environment_description if initial_state else ""
+        ),
         current_map_id=current_map_id,
     )
     db_map = session.exec(

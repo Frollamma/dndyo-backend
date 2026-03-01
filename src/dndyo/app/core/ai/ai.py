@@ -1,5 +1,5 @@
 import json
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any, cast
 
 from mistralai import Mistral
@@ -12,6 +12,7 @@ from dndyo.app.models.actor import Actor
 from dndyo.app.models.game import Game
 from dndyo.app.models.game_state import GameState
 from dndyo.app.models.live_actor import LiveActor, LiveActorRole
+from dndyo.app.models.map import Map
 
 TOOLS = state_tools.TOOLS
 SYSTEM_PROMPT = (
@@ -21,7 +22,7 @@ SYSTEM_PROMPT = (
     "Be coincise but creative, answer in human tone, make the atmosphere interesting,"
     "if asked say, but don't say too much. "
     "You can access tools to inspect and update game state; use those tools when "
-    "needed to keep the world state accurate."
+    "needed to keep the game state accurate."
     "Answer directly, you are the narrator voice, you don't need introductions"
 )
 SYSTEM_CONTEXT_PROMPT_PREFIX = "Game context for this run:"
@@ -70,11 +71,36 @@ def _build_game_context_system_message(game_id: int) -> str:
             for live_actor, actor in player_rows
         ]
 
-        state_payload = state_tools.get_state({}, game_id=game_id)
+        state_payload = state_tools.get_game_state({}, game_id=game_id)
+        current_map = state_payload.get("current_map") or {}
+        connected_map_ids = current_map.get("connected_maps_ids") or []
+        connected_maps = []
+        for map_id in connected_map_ids:
+            db_connected_map = session.exec(
+                select(Map).where(
+                    Map.id == map_id,
+                    Map.game_id == game_id,
+                )
+            ).first()
+            if db_connected_map is None:
+                connected_maps.append({"id": map_id, "name": "Unknown"})
+            else:
+                connected_maps.append(
+                    {
+                        "id": db_connected_map.id,
+                        "name": db_connected_map.name,
+                    }
+                )
         game_state = {
             "current_map_id": state_payload.get("current_map_id"),
-            "world_state": state_payload.get(
-                "world_state", state.world_state if state is not None else ""
+            "current_map": {
+                "id": current_map.get("id"),
+                "name": current_map.get("name"),
+                "connected_maps": connected_maps,
+            },
+            "environment_description": state_payload.get(
+                "environment_description",
+                state.environment_description if state is not None else "",
             ),
             "live_actors": state_payload.get("live_actors", []),
         }
@@ -113,11 +139,23 @@ def _chat_create(
             model=settings.mistral_model,
             messages=messages_payload,
             tools=tools_payload,
+            tool_choice="auto",
         )
+
+        # This is broken... See https://github.com/mistralai/client-python/issues/168
+        return client.chat.complete(
+            model=settings.mistral_model,
+            messages=messages_payload,
+            tools=tools_payload,
+            stream=True,
+        )
+
     return client.chat.complete(
         model=settings.mistral_model,
         messages=messages_payload,
         tools=tools_payload,
+        tool_choice="auto",
+        stream=False,
     )
 
 
@@ -131,13 +169,14 @@ def _extract_message(completion: Any) -> dict[str, Any]:
 
 
 def _run_placeholder_tool(name: str, arguments_text: str, game_id: int) -> str:
+    print(f"[ai-tool] running {name}({arguments_text})")
     try:
         args = json.loads(arguments_text) if arguments_text else {}
     except json.JSONDecodeError:
         args = {"raw_arguments": arguments_text}
     try:
-        if name == "get_state":
-            result = state_tools.get_state(args, game_id=game_id)
+        if name == "get_game_state":
+            result = state_tools.get_game_state(args, game_id=game_id)
         elif name == "create_live_actor":
             result = state_tools.create_live_actor(args, game_id=game_id)
         elif name == "delete_live_actor":
@@ -146,8 +185,8 @@ def _run_placeholder_tool(name: str, arguments_text: str, game_id: int) -> str:
             result = state_tools.change_map(args, game_id=game_id)
         elif name == "unlock_next_chapter":
             result = state_tools.unlock_next_chapter(args, game_id=game_id)
-        elif name == "change_world_state":
-            result = state_tools.change_world_state(args, game_id=game_id)
+        elif name == "change_environment_description":
+            result = state_tools.change_environment_description(args, game_id=game_id)
         else:
             result = {"error": f"unknown tool '{name}'", "received": args}
     except Exception as exc:
@@ -180,6 +219,7 @@ def _resolve_tool_calls(
     messages: list[dict[str, Any]],
     game_id: int,
     max_rounds: int = 3,
+    on_intermediate_message: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     resolved_messages = list(messages)
 
@@ -196,32 +236,53 @@ def _resolve_tool_calls(
         if not tool_calls:
             break
 
-        resolved_messages.append(
-            {
-                "role": "assistant",
-                "content": assistant_message.get("content", "") or "",
-                "tool_calls": tool_calls,
-            }
-        )
+        assistant_tool_call_message = {
+            "role": "assistant",
+            "content": assistant_message.get("content", "") or "",
+            "tool_calls": tool_calls,
+        }
+        resolved_messages.append(assistant_tool_call_message)
+        if on_intermediate_message is not None:
+            on_intermediate_message(assistant_tool_call_message)
 
         for tool_call in tool_calls:
             tool_name = tool_call["function"]["name"] or "unknown_tool"
             tool_arguments = tool_call["function"]["arguments"] or "{}"
             tool_result = _run_placeholder_tool(tool_name, tool_arguments, game_id)
-            resolved_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],
-                    "name": tool_name,
-                    "content": tool_result,
-                }
-            )
+            tool_message = {
+                "role": "tool",
+                "tool_call_id": tool_call["id"],
+                "name": tool_name,
+                "content": tool_result,
+            }
+            resolved_messages.append(tool_message)
+            if on_intermediate_message is not None:
+                on_intermediate_message(tool_message)
 
     return resolved_messages
 
 
-def _stream_chunks(stream: Iterable[Any]) -> Iterator[str]:
-    for event in stream:
+def _extract_completion_text(payload: Any) -> str:
+    choices = _get_attr(payload, "choices", []) or []
+    if not choices:
+        return ""
+    first_choice = choices[0]
+    message = _get_attr(first_choice, "message", {}) or {}
+    content = _get_attr(message, "content", "")
+    return content if isinstance(content, str) else ""
+
+
+def _stream_chunks(stream_or_completion: Any) -> Iterator[str]:
+    # Non-stream fallback (`chat.complete` style response)
+    top_level_choices = _get_attr(stream_or_completion, "choices", None)
+    if top_level_choices:
+        text = _extract_completion_text(stream_or_completion)
+        if text:
+            yield text
+        return
+
+    # Streaming response (`chat.stream` style events)
+    for event in stream_or_completion:
         chunk = _get_attr(event, "data", event)
         choices = _get_attr(chunk, "choices", []) or []
         if not choices:
@@ -232,7 +293,11 @@ def _stream_chunks(stream: Iterable[Any]) -> Iterator[str]:
             yield content
 
 
-def stream_ai_response(history: list[dict[str, Any]], game_id: int) -> Iterator[str]:
+def stream_ai_response(
+    history: list[dict[str, Any]],
+    game_id: int,
+    on_intermediate_message: Callable[[dict[str, Any]], None] | None = None,
+) -> Iterator[str]:
     client = _build_client()
     context_prompt = _build_game_context_system_message(game_id)
     messages = _resolve_tool_calls(
@@ -243,6 +308,7 @@ def stream_ai_response(history: list[dict[str, Any]], game_id: int) -> Iterator[
             *history,
         ],
         game_id,
+        on_intermediate_message=on_intermediate_message,
     )
     stream = _chat_create(
         client,

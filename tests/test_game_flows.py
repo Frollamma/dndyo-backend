@@ -21,7 +21,9 @@ def _create_game(client) -> int:
     return response.json()["id"]
 
 
-def _seed_actor_and_live_actor(test_engine, game_id: int, *, hp: int = 20, ac: int = 12) -> int:
+def _seed_actor_and_live_actor(
+    test_engine, game_id: int, *, hp: int = 20, ac: int = 12
+) -> int:
     with Session(test_engine) as session:
         image = Image(uri="https://example.com/goblin.png")
         session.add(image)
@@ -115,14 +117,18 @@ def test_create_game_and_default_state(client):
     assert payload["live_actors"] == []
     assert isinstance(payload["current_map_id"], int)
     assert payload["current_map_id"] > 0
-    assert payload["world_state"] == ""
+    assert payload["environment_description"] == ""
 
 
-def test_run_ai_stream_uses_mock_and_persists_message(client, monkeypatch):
+def test_run_ai_stream_uses_mock_and_persists_message(client, test_engine, monkeypatch):
     game_id = _create_game(client)
+    sender_id = _seed_actor_and_live_actor(test_engine, game_id)
     add_user = client.post(
         f"/api/game/{game_id}/chat/message",
-        json={"message": {"role": "user", "content": "Set the scene."}},
+        json={
+            "sender_id": sender_id,
+            "message": {"role": "user", "content": "Set the scene."},
+        },
     )
     assert add_user.status_code == 200
 
@@ -151,11 +157,17 @@ def test_run_ai_stream_uses_mock_and_persists_message(client, monkeypatch):
     }
 
 
-def test_run_ai_stream_failure_does_not_break_response_and_persists_partial(client, monkeypatch):
+def test_run_ai_stream_failure_does_not_break_response_and_persists_partial(
+    client, test_engine, monkeypatch
+):
     game_id = _create_game(client)
+    sender_id = _seed_actor_and_live_actor(test_engine, game_id)
     add_user = client.post(
         f"/api/game/{game_id}/chat/message",
-        json={"message": {"role": "user", "content": "What do I see?"}},
+        json={
+            "sender_id": sender_id,
+            "message": {"role": "user", "content": "What do I see?"},
+        },
     )
     assert add_user.status_code == 200
 
@@ -227,6 +239,8 @@ def test_update_live_actors_persists_background(client, test_engine):
     assert payload["live_actors"][0]["background"] == (
         "Veteran scout who survived the Blackfen war."
     )
+    assert payload["live_actors"][0]["actor"]["id"] == actor_id
+    assert payload["live_actors"][0]["actor"]["name"] == "Ranger"
 
 
 def test_attack_live_actor_hit_applies_damage(client, test_engine, monkeypatch):

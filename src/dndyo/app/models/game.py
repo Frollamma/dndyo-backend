@@ -34,7 +34,7 @@ class Game(GameBase, table=True):
 class GameCreate(GameBase):
     initial_state: GameStateCreate | None = Field(
         default=None,
-        description="Optional initial game state (world/map/live actors).",
+        description="Optional initial game state (environment/map/live actors).",
     )
 
 
