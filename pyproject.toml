@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 dndyo = "dndyo.cli:main"
+dndyo-tui = "dndyo.tui:main"
 
 [dependency-groups]
 dev = ["pytest>=8.4.0"]

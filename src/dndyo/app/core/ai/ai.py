@@ -17,9 +17,12 @@ TOOLS = state_tools.TOOLS
 SYSTEM_PROMPT = (
     "You are the Dungeon Master of a Dungeons & Dragons game. "
     "Lead the game, narrate scenes, control pacing, and guide players through "
-    "decisions and outcomes. "
+    "decisions and outcomes. Don't take decisions or actions for them. "
+    "Be coincise but creative, answer in human tone, make the atmosphere interesting,"
+    "if asked say, but don't say too much. "
     "You can access tools to inspect and update game state; use those tools when "
     "needed to keep the world state accurate."
+    "Answer directly, you are the narrator voice, you don't need introductions"
 )
 SYSTEM_CONTEXT_PROMPT_PREFIX = "Game context for this run:"
 
@@ -70,7 +73,9 @@ def _build_game_context_system_message(game_id: int) -> str:
         game_state = {
             "current_map_id": state.current_map_id if state is not None else None,
             "world_state": state.world_state if state is not None else "",
-            "live_actors": state_tools.get_state({}, game_id=game_id).get("live_actors", []),
+            "live_actors": state_tools.get_state({}, game_id=game_id).get(
+                "live_actors", []
+            ),
         }
 
     context_payload = {
@@ -102,25 +107,11 @@ def _chat_create(
     settings = get_settings()
     messages_payload = cast(Any, messages)
     tools_payload = cast(Any, tools)
-    chat_api = client.chat
-    completions_api = getattr(chat_api, "completions", None)
-    if completions_api and hasattr(completions_api, "create"):
-        return completions_api.create(
-            model=settings.mistral_model,
-            messages=messages_payload,
-            tools=tools_payload,
-            stream=stream,
-        )
-    if stream and hasattr(chat_api, "stream"):
-        return chat_api.stream(
-            model=settings.mistral_model,
-            messages=messages_payload,
-            tools=tools_payload,
-        )
-    return chat_api.complete(
+    return client.chat.complete(
         model=settings.mistral_model,
         messages=messages_payload,
         tools=tools_payload,
+        stream=stream,
     )
 
 

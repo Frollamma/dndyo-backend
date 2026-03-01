@@ -151,6 +151,37 @@ def test_run_ai_stream_uses_mock_and_persists_message(client, monkeypatch):
     }
 
 
+def test_run_ai_stream_failure_does_not_break_response_and_persists_partial(client, monkeypatch):
+    game_id = _create_game(client)
+    add_user = client.post(
+        f"/api/game/{game_id}/chat/message",
+        json={"message": {"role": "user", "content": "What do I see?"}},
+    )
+    assert add_user.status_code == 200
+
+    def failing_stream(_history: list[dict], game_id: int) -> Iterator[str]:
+        assert game_id > 0
+        yield "Fog drifts over the stones. "
+        raise RuntimeError("upstream stream interrupted")
+
+    monkeypatch.setattr(
+        "dndyo.app.routers.game.chat.stream_ai_response",
+        failing_stream,
+    )
+
+    ai_response = client.post(f"/api/game/{game_id}/chat/run-ai")
+    assert ai_response.status_code == 200
+    assert "Fog drifts over the stones." in ai_response.text
+    assert "[ai-stream-error] upstream stream interrupted" in ai_response.text
+
+    messages = client.get(f"/api/game/{game_id}/chat/messages")
+    assert messages.status_code == 200
+    payload = messages.json()
+    assert len(payload) == 2
+    assert payload[1]["message"]["role"] == "assistant"
+    assert payload[1]["message"]["content"] == "Fog drifts over the stones."
+
+
 def test_update_live_actors_rejects_unknown_actor(client):
     game_id = _create_game(client)
 

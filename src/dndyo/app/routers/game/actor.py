@@ -13,8 +13,9 @@ def create_actor(
     game_id: int = Depends(require_game_id),
     session: Session = Depends(get_session),
 ):
-    db_actor = Actor.model_validate(actor.model_dump(mode="json"))
-    db_actor.game_id = game_id
+    payload = actor.model_dump(mode="json")
+    payload["game_id"] = game_id
+    db_actor = Actor.model_validate(payload)
     session.add(db_actor)
     session.commit()
     session.refresh(db_actor)

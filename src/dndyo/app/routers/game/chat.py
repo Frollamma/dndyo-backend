@@ -89,9 +89,13 @@ def add_ai_message(
 
     def _stream():
         full_response: list[str] = []
-        for chunk in stream_ai_response(history, game_id=game_id):
-            full_response.append(chunk)
-            yield chunk
+        try:
+            for chunk in stream_ai_response(history, game_id=game_id):
+                full_response.append(chunk)
+                yield chunk
+        except Exception as exc:
+            # Keep the HTTP stream well-formed even if upstream AI streaming fails.
+            yield f"\n[ai-stream-error] {exc}"
 
         assistant_text = "".join(full_response).strip()
         if assistant_text:
