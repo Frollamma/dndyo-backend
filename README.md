@@ -6,6 +6,12 @@ Run the server
 uv run dndyo
 ```
 
+# Features
+
+- Generates images automatically based on game descripiton
+- Uses mistral
+
+
 # TUI
 
 If you want, you can run our TUI as client.

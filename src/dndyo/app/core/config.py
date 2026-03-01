@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,6 +14,16 @@ class Settings(BaseSettings):
     mistral_model: str = "mistral-small-latest"
     mistral_api_key: str = "AAA"
     mistral_server_url: str | None = None
+    
+    # Image storage configuration
+    images_dir: str = "images"  # Directory to store generated images
+    
+    @property
+    def images_path(self) -> Path:
+        """Get the images directory path, creating it if needed."""
+        path = Path(self.images_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
 
 @lru_cache

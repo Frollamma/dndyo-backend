@@ -1,13 +1,22 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
+from dndyo.app.core.ai.image_agent import (
+    generate_game_cover_image,
+    generate_map_images,
+)
 from dndyo.app.core.db import get_session
 from dndyo.app.helpers.map_state import ensure_game_has_map
 from dndyo.app.models.actor import Actor
 from dndyo.app.models.game import Game, GameCreate, GameRead
 from dndyo.app.models.game_state import GameState
+from dndyo.app.models.image import Image
 from dndyo.app.models.live_actor import LiveActor
 from dndyo.app.models.map import Map
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -81,6 +90,58 @@ def create_game(
         )
 
     session.commit()
+    session.refresh(db_game)
+
+    # Generate images asynchronously (fault-tolerant)
+    try:
+        # Generate game cover image if not provided
+        if db_game.image_id is None:
+            logger.info(f"Generating cover image for game: {db_game.name}")
+            cover_image_path = generate_game_cover_image(
+                game_name=db_game.name,
+                game_description=db_game.ai_initial_prompt[:200],  # Use first 200 chars
+            )
+            if cover_image_path:
+                cover_image = Image(
+                    uri=cover_image_path,
+                )
+                session.add(cover_image)
+                session.flush()
+                if cover_image.id:
+                    db_game.image_id = cover_image.id
+                    session.add(db_game)
+                    logger.info(f"Generated cover image for game {db_game.id}")
+
+        # Generate map images (always)
+        logger.info(f"Generating map images for game: {db_game.name}")
+        maps = session.exec(
+            select(Map).where(Map.game_id == db_game.id)
+        ).all()
+        
+        if maps:
+            map_names = [m.name for m in maps]
+            map_images = generate_map_images(map_names)
+
+            for db_map_obj in maps:
+                if db_map_obj.image_id is None and db_map_obj.name in map_images:
+                    image_path = map_images[db_map_obj.name]
+                    if image_path:
+                        map_image = Image(
+                            uri=image_path,
+                        )
+                        session.add(map_image)
+                        session.flush()
+                        if map_image.id:
+                            db_map_obj.image_id = map_image.id
+                            session.add(db_map_obj)
+                            logger.info(f"Generated image for map {db_map_obj.id}")
+
+        session.commit()
+
+    except Exception as e:
+        logger.error(f"Error generating images for game {db_game.id}: {e}")
+        # Continue anyway - image generation is optional
+
     session.refresh(db_game)
     return db_game
 
