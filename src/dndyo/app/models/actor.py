@@ -69,7 +69,7 @@ class ActorBase(SQLModel):
     controlled_by_user: bool = False
     can_fight: bool = False
     image_id: int = Field(foreign_key="image.id")
-    abilities: list[dict[str, Any]] = Field(
+    abilities: list[ActorAbility] = Field(
         default_factory=list,
         sa_column=Column(JSON),
         description="Structured list of abilities/spells/actions available to this actor.",

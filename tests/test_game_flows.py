@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 
+from dndyo.app.models.inventory_object import InventoryObject
 from sqlmodel import Session, select
 
 from dndyo.app.models.actor import Actor, Alignment, Size
@@ -65,6 +66,7 @@ def _seed_actor_and_live_actor(
             state="Alert",
             background="A snarling goblin scout from the eastern caves.",
             role=LiveActorRole.enemy,
+            inventory=[InventoryObject(name="Test", description="Test", quantity=1)],
         )
         session.add(live_actor)
         session.commit()

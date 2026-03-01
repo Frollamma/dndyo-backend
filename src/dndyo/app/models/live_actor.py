@@ -1,5 +1,7 @@
 from enum import Enum
-
+from typing import List
+from sqlalchemy import JSON
+from dndyo.app.models.inventory_object import InventoryObject
 from sqlmodel import SQLModel, Field
 
 
@@ -18,6 +20,7 @@ class LiveActorBase(SQLModel):
         description="Unique description and history for this live actor.",
     )
     role: LiveActorRole
+    inventory: List[InventoryObject] = Field(default_factory=list, sa_type=JSON)
 
 
 class LiveActor(LiveActorBase, table=True):
