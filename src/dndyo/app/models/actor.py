@@ -1,5 +1,7 @@
-from typing import Optional
+from typing import Any, Optional
 from enum import Enum
+from pydantic import BaseModel
+from sqlalchemy import JSON, Column
 from sqlmodel import SQLModel, Field
 
 
@@ -22,6 +24,20 @@ class Alignment(str, Enum):
     lawful_evil = "Lawful Evil"
     neutral_evil = "Neutral Evil"
     chaotic_evil = "Chaotic Evil"
+
+
+class AbilityType(str, Enum):
+    attack = "attack"
+    healing = "healing"
+    support = "support"
+    utility = "utility"
+    passive = "passive"
+
+
+class ActorAbility(BaseModel):
+    name: str
+    description: str
+    ability_type: AbilityType
 
 
 class ActorBase(SQLModel):
@@ -51,6 +67,7 @@ class ActorBase(SQLModel):
     controlled_by_user: bool = False
     can_fight: bool = False
     image_id: int = Field(foreign_key="image.id")
+    abilities: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
 
 
 class Actor(ActorBase, table=True):
@@ -59,8 +76,9 @@ class Actor(ActorBase, table=True):
 
 
 class ActorCreate(ActorBase):
-    pass
+    abilities: list[ActorAbility] = Field(default_factory=list)
 
 
 class ActorRead(ActorBase):
     id: int
+    abilities: list[ActorAbility] = Field(default_factory=list)

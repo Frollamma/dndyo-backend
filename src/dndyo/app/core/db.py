@@ -19,7 +19,7 @@ engine = create_engine(DATABASE_URL, echo=True)
 def _schema_compatible() -> bool:
     required_columns = {
         "game": {"id", "name", "owner_user", "game_state_id", "chapters", "current_chapters"},
-        "actor": {"id", "game_id"},
+        "actor": {"id", "game_id", "abilities"},
         "chatmessage": {"id", "game_id"},
         "gamestate": {"id"},
         "liveactor": {"id", "game_id"},
