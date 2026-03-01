@@ -3,9 +3,15 @@ from collections.abc import Iterable, Iterator
 from typing import Any, cast
 
 from mistralai import Mistral
+from sqlmodel import Session, col, select
 
 from dndyo.app.core.config import get_settings
+from dndyo.app.core.db import engine
 from dndyo.app.core.ai.tools import state as state_tools
+from dndyo.app.models.actor import Actor
+from dndyo.app.models.game import Game
+from dndyo.app.models.game_state import GameState
+from dndyo.app.models.live_actor import LiveActor, LiveActorRole
 
 TOOLS = state_tools.TOOLS
 SYSTEM_PROMPT = (
@@ -15,6 +21,7 @@ SYSTEM_PROMPT = (
     "You can access tools to inspect and update game state; use those tools when "
     "needed to keep the world state accurate."
 )
+SYSTEM_CONTEXT_PROMPT_PREFIX = "Game context for this run:"
 
 
 def _get_attr(obj: Any, name: str, default: Any = None) -> Any:
@@ -31,6 +38,50 @@ def _as_dict(obj: Any) -> dict[str, Any]:
     if hasattr(obj, "dict"):
         return obj.dict()
     return {}
+
+
+def _build_game_context_system_message(game_id: int) -> str:
+    with Session(engine) as session:
+        game = session.exec(select(Game).where(Game.id == game_id)).first()
+        state = session.exec(select(GameState).where(GameState.id == game_id)).first()
+
+        first_chapter = "Unknown"
+        if game is not None and game.chapters:
+            first_chapter = game.chapters[0]
+
+        player_rows = session.exec(
+            select(LiveActor, Actor)
+            .join(Actor, Actor.id == LiveActor.actor_id)
+            .where(
+                col(LiveActor.game_id) == game_id,
+                col(Actor.game_id) == game_id,
+                col(LiveActor.role) == LiveActorRole.player,
+            )
+            .order_by(col(LiveActor.id))
+        ).all()
+        players = [
+            {
+                "name": actor.name,
+                "background": live_actor.background,
+            }
+            for live_actor, actor in player_rows
+        ]
+
+        game_state = {
+            "current_map_id": state.current_map_id if state is not None else None,
+            "world_state": state.world_state if state is not None else "",
+            "live_actors": state_tools.get_state({}, game_id=game_id).get("live_actors", []),
+        }
+
+    context_payload = {
+        "first_chapter": first_chapter,
+        "players": players,
+        "game_state": game_state,
+    }
+    return (
+        f"{SYSTEM_CONTEXT_PROMPT_PREFIX}\n"
+        f"{json.dumps(context_payload, ensure_ascii=True)}"
+    )
 
 
 def _build_client() -> Mistral:
@@ -186,9 +237,14 @@ def _stream_chunks(stream: Iterable[Any]) -> Iterator[str]:
 
 def stream_ai_response(history: list[dict[str, Any]], game_id: int) -> Iterator[str]:
     client = _build_client()
+    context_prompt = _build_game_context_system_message(game_id)
     messages = _resolve_tool_calls(
         client,
-        [{"role": "system", "content": SYSTEM_PROMPT}, *history],
+        [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": context_prompt},
+            *history,
+        ],
         game_id,
     )
     stream = _chat_create(

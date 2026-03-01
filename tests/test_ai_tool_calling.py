@@ -62,6 +62,11 @@ def test_stream_ai_response_resolves_tool_calls_and_streams(monkeypatch):
     monkeypatch.setattr(ai, "_build_client", fake_build_client)
     monkeypatch.setattr(ai, "_chat_create", fake_chat_create)
     monkeypatch.setattr(ai, "_run_placeholder_tool", fake_run_tool)
+    monkeypatch.setattr(
+        ai,
+        "_build_game_context_system_message",
+        lambda game_id: f"Game context for {game_id}",
+    )
 
     result = "".join(
         ai.stream_ai_response(
@@ -82,6 +87,11 @@ def test_stream_ai_response_resolves_tool_calls_and_streams(monkeypatch):
     assert chat_calls[0]["stream"] is False
     assert chat_calls[1]["stream"] is False
     assert chat_calls[2]["stream"] is True
+    first_messages = chat_calls[0]["messages"]
+    assert first_messages[0]["role"] == "system"
+    assert first_messages[0]["content"] == ai.SYSTEM_PROMPT
+    assert first_messages[1]["role"] == "system"
+    assert first_messages[1]["content"] == "Game context for 42"
 
     # The second resolution request should include a "tool" role message.
     second_messages = chat_calls[1]["messages"]
