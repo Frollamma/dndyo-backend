@@ -70,12 +70,13 @@ def _build_game_context_system_message(game_id: int) -> str:
             for live_actor, actor in player_rows
         ]
 
+        state_payload = state_tools.get_state({}, game_id=game_id)
         game_state = {
-            "current_map_id": state.current_map_id if state is not None else None,
-            "world_state": state.world_state if state is not None else "",
-            "live_actors": state_tools.get_state({}, game_id=game_id).get(
-                "live_actors", []
+            "current_map_id": state_payload.get("current_map_id"),
+            "world_state": state_payload.get(
+                "world_state", state.world_state if state is not None else ""
             ),
+            "live_actors": state_payload.get("live_actors", []),
         }
 
     context_payload = {
@@ -107,11 +108,16 @@ def _chat_create(
     settings = get_settings()
     messages_payload = cast(Any, messages)
     tools_payload = cast(Any, tools)
+    if stream:
+        return client.chat.stream(
+            model=settings.mistral_model,
+            messages=messages_payload,
+            tools=tools_payload,
+        )
     return client.chat.complete(
         model=settings.mistral_model,
         messages=messages_payload,
         tools=tools_payload,
-        stream=stream,
     )
 
 

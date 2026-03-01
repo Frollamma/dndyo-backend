@@ -10,9 +10,12 @@ from sqlmodel import Session
 
 from dndyo.app.core.db import engine, init_db
 from dndyo.app.models.image import Image
+from dndyo.app.models.map import Map
 
 
-def _request(client: httpx.Client, method: str, path: str, payload: dict[str, Any] | None = None):
+def _request(
+    client: httpx.Client, method: str, path: str, payload: dict[str, Any] | None = None
+):
     try:
         response = client.request(method, path, json=payload)
     except Exception as exc:
@@ -28,7 +31,9 @@ def _stream_request(client: httpx.Client, method: str, path: str):
         with client.stream(method, path) as response:
             if response.status_code >= 400:
                 detail = response.text
-                raise RuntimeError(f"{method} {path} failed ({response.status_code}): {detail}")
+                raise RuntimeError(
+                    f"{method} {path} failed ({response.status_code}): {detail}"
+                )
 
             full_text: list[str] = []
             print("ai> ", end="", flush=True)
@@ -41,7 +46,7 @@ def _stream_request(client: httpx.Client, method: str, path: str):
                     text = text.strip()
                     if not text.startswith("data:"):
                         continue
-                    payload = text[len("data:"):].strip()
+                    payload = text[len("data:") :].strip()
                     if payload == "[DONE]":
                         break
                     try:
@@ -106,7 +111,7 @@ def _stream_request_raw(base_url: str, method: str, path: str) -> str:
                 text = line.decode("utf-8", "ignore").strip()
                 if not text or not text.startswith("data:"):
                     continue
-                payload = text[len("data:"):].strip()
+                payload = text[len("data:") :].strip()
                 if payload == "[DONE]":
                     break
                 try:
@@ -146,7 +151,9 @@ def _seed_image(uri: str) -> int:
         return image.id
 
 
-def _create_actor(client: httpx.Client, game_id: int, *, name: str, role: str, image_id: int) -> int:
+def _create_actor(
+    client: httpx.Client, game_id: int, *, name: str, role: str, image_id: int
+) -> int:
     actor_payload = {
         "name": name,
         "level": 3 if role == "Player" else 2,
@@ -182,6 +189,23 @@ def _create_actor(client: httpx.Client, game_id: int, *, name: str, role: str, i
     return int(response.json()["id"])
 
 
+def _seed_map(*, game_id: int, name: str, image_id: int) -> int:
+    with Session(engine) as session:
+        db_map = Map(
+            game_id=game_id,
+            name=name,
+            description=0,
+            image_id=image_id,
+            connected_maps_ids=[],
+        )
+        session.add(db_map)
+        session.commit()
+        session.refresh(db_map)
+        if db_map.id is None:
+            raise RuntimeError("Map ID was not generated.")
+        return db_map.id
+
+
 def _seed_game(client: httpx.Client) -> int:
     game_response = _request(
         client,
@@ -198,7 +222,6 @@ def _seed_game(client: httpx.Client) -> int:
             "current_chapters": ["Chapter 1: Smoke Over Blackridge"],
             "initial_state": {
                 "world_state": "Ash is drifting across Blackridge. The keep bells are silent.",
-                "current_map_id": None,
                 "live_actors": [],
             },
         },
@@ -206,16 +229,37 @@ def _seed_game(client: httpx.Client) -> int:
     game_id = int(game_response.json()["id"])
 
     image_ids = [
+        _seed_image("https://example.com/blackridge-gate-map.png"),
         _seed_image("https://example.com/lyra.png"),
         _seed_image("https://example.com/dorn.png"),
         _seed_image("https://example.com/goblin.png"),
         _seed_image("https://example.com/wolf.png"),
     ]
 
-    lyra_id = _create_actor(client, game_id, name="Lyra Voss", role="Player", image_id=image_ids[0])
-    dorn_id = _create_actor(client, game_id, name="Dorn Hale", role="Player", image_id=image_ids[1])
-    goblin_id = _create_actor(client, game_id, name="Skreek", role="Enemy", image_id=image_ids[2])
-    wolf_id = _create_actor(client, game_id, name="Ashfang", role="Enemy", image_id=image_ids[3])
+    blackridge_gate_map_id = _seed_map(
+        game_id=game_id,
+        name="Blackridge Gate",
+        image_id=image_ids[0],
+    )
+    _request(
+        client,
+        "PATCH",
+        f"/api/game/{game_id}/state/current-map",
+        {"current_map_id": blackridge_gate_map_id},
+    )
+
+    lyra_id = _create_actor(
+        client, game_id, name="Lyra Voss", role="Player", image_id=image_ids[1]
+    )
+    dorn_id = _create_actor(
+        client, game_id, name="Dorn Hale", role="Player", image_id=image_ids[2]
+    )
+    goblin_id = _create_actor(
+        client, game_id, name="Skreek", role="Enemy", image_id=image_ids[3]
+    )
+    wolf_id = _create_actor(
+        client, game_id, name="Ashfang", role="Enemy", image_id=image_ids[4]
+    )
 
     _request(
         client,
@@ -258,7 +302,9 @@ def _seed_game(client: httpx.Client) -> int:
     print("Story: Chapter 1: Smoke Over Blackridge")
     print("Players:")
     print("  - Lyra Voss: Former city scout who lost her unit in a border ambush.")
-    print("  - Dorn Hale: Ex-guard captain seeking redemption after abandoning his post.")
+    print(
+        "  - Dorn Hale: Ex-guard captain seeking redemption after abandoning his post."
+    )
     print("Enemies:")
     print("  - Skreek: Raider from the red-claw tribe, loyal only to coin.")
     print("  - Ashfang: War-trained dire wolf scarred by years of sieges.")
@@ -303,7 +349,9 @@ def main():
                 print(json.dumps(state, indent=2))
                 continue
             if user_input == "/history":
-                messages = _request(client, "GET", f"/api/game/{game_id}/chat/messages").json()
+                messages = _request(
+                    client, "GET", f"/api/game/{game_id}/chat/messages"
+                ).json()
                 for message in messages:
                     role = message["message"]["role"]
                     content = message["message"]["content"]
@@ -311,7 +359,9 @@ def main():
                 continue
             if user_input == "/ai":
                 try:
-                    _stream_request_raw(base_url, "POST", f"/api/game/{game_id}/chat/run-ai")
+                    _stream_request(
+                        client, "POST", f"/api/game/{game_id}/chat/run-ai"
+                    )
                 except RuntimeError as exc:
                     print(f"ai-error> {exc}")
                     continue

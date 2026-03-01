@@ -111,11 +111,11 @@ def test_create_game_and_default_state(client):
 
     response = client.get(f"/api/game/{game_id}/state")
     assert response.status_code == 200
-    assert response.json() == {
-        "live_actors": [],
-        "current_map_id": None,
-        "world_state": "",
-    }
+    payload = response.json()
+    assert payload["live_actors"] == []
+    assert isinstance(payload["current_map_id"], int)
+    assert payload["current_map_id"] > 0
+    assert payload["world_state"] == ""
 
 
 def test_run_ai_stream_uses_mock_and_persists_message(client, monkeypatch):

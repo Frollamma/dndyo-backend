@@ -49,6 +49,8 @@ def test_game_create_accepts_initial_state(client):
     assert state.status_code == 200
     assert state.json()["world_state"] == "The tavern is crowded and loud."
     assert state.json()["live_actors"] == []
+    assert isinstance(state.json()["current_map_id"], int)
+    assert state.json()["current_map_id"] > 0
 
 
 def test_state_update_and_read(client):

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, col, delete, select
 
 from dndyo.app.core.db import get_session
+from dndyo.app.helpers.map_state import ensure_game_has_map
 from dndyo.app.helpers.battle import (
     apply_damage,
     calculate_damage_from_roll,
@@ -27,9 +28,23 @@ router = APIRouter()
 
 
 def _get_or_create_state(session: Session, game_id: int) -> GameState:
+    default_map_id = ensure_game_has_map(session, game_id)
     state = session.exec(select(GameState).where(col(GameState.id) == game_id)).first()
     if state is None:
-        state = GameState(id=game_id, world_state="")
+        state = GameState(id=game_id, world_state="", current_map_id=default_map_id)
+        session.add(state)
+        session.commit()
+        session.refresh(state)
+        return state
+
+    db_map = session.exec(
+        select(Map).where(
+            col(Map.id) == state.current_map_id,
+            col(Map.game_id) == game_id,
+        )
+    ).first()
+    if db_map is None:
+        state.current_map_id = default_map_id
         session.add(state)
         session.commit()
         session.refresh(state)
@@ -113,18 +128,17 @@ def update_current_map(
     session: Session = Depends(get_session),
 ):
     state = _get_or_create_state(session, game_id)
-    if payload.current_map_id is not None:
-        db_map = session.exec(
-            select(Map).where(
-                col(Map.id) == payload.current_map_id,
-                col(Map.game_id) == game_id,
-            )
-        ).first()
-        if db_map is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Map {payload.current_map_id} does not exist in game {game_id}.",
-            )
+    db_map = session.exec(
+        select(Map).where(
+            col(Map.id) == payload.current_map_id,
+            col(Map.game_id) == game_id,
+        )
+    ).first()
+    if db_map is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Map {payload.current_map_id} does not exist in game {game_id}.",
+        )
     state.current_map_id = payload.current_map_id
     session.add(state)
     session.commit()

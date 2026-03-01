@@ -6,7 +6,7 @@ from dndyo.app.models.live_actor import LiveActorCreate
 
 
 class GameStateBase(SQLModel):
-    current_map_id: int | None = Field(default=None, foreign_key="map.id")
+    current_map_id: int = Field(foreign_key="map.id")
     world_state: str = Field(
         default="",
         sa_column=Column("time", String, nullable=False, default=""),
@@ -26,7 +26,7 @@ class GameStateCreate(BaseModel):
 
 class GameStateRead(BaseModel):
     live_actors: list[LiveActorCreate]
-    current_map_id: int | None
+    current_map_id: int
     world_state: str
 
 
@@ -35,7 +35,7 @@ class LiveActorsUpdate(BaseModel):
 
 
 class CurrentMapUpdate(BaseModel):
-    current_map_id: int | None
+    current_map_id: int
 
 
 class WorldStateUpdate(BaseModel):

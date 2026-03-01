@@ -3,6 +3,7 @@ from typing import Any
 from sqlmodel import Session, col, delete, select
 
 from dndyo.app.core.db import engine
+from dndyo.app.helpers.map_state import ensure_game_has_map
 from dndyo.app.models.actor import Actor
 from dndyo.app.models.game import Game
 from dndyo.app.models.game_state import GameState
@@ -113,9 +114,23 @@ TOOLS = [
 
 
 def _get_or_create_state(session: Session, game_id: int) -> GameState:
+    default_map_id = ensure_game_has_map(session, game_id)
     state = session.exec(select(GameState).where(col(GameState.id) == game_id)).first()
     if state is None:
-        state = GameState(id=game_id, world_state="")
+        state = GameState(id=game_id, world_state="", current_map_id=default_map_id)
+        session.add(state)
+        session.commit()
+        session.refresh(state)
+        return state
+
+    db_map = session.exec(
+        select(Map).where(
+            col(Map.id) == state.current_map_id,
+            col(Map.game_id) == game_id,
+        )
+    ).first()
+    if db_map is None:
+        state.current_map_id = default_map_id
         session.add(state)
         session.commit()
         session.refresh(state)
@@ -124,22 +139,23 @@ def _get_or_create_state(session: Session, game_id: int) -> GameState:
 
 def _read_state(session: Session, game_id: int) -> dict[str, Any]:
     state = _get_or_create_state(session, game_id)
-    current_map = None
-    if state.current_map_id is not None:
-        db_map = session.exec(
-            select(Map).where(
-                col(Map.id) == state.current_map_id,
-                col(Map.game_id) == game_id,
-            )
-        ).first()
-        if db_map is not None:
-            current_map = {
-                "id": db_map.id,
-                "name": db_map.name,
-                "description": db_map.description,
-                "image_id": db_map.image_id,
-                "connected_maps_ids": db_map.connected_maps_ids,
-            }
+    db_map = session.exec(
+        select(Map).where(
+            col(Map.id) == state.current_map_id,
+            col(Map.game_id) == game_id,
+        )
+    ).first()
+    if db_map is None:
+        raise RuntimeError(
+            f"Current map {state.current_map_id} does not exist in game {game_id}."
+        )
+    current_map = {
+        "id": db_map.id,
+        "name": db_map.name,
+        "description": db_map.description,
+        "image_id": db_map.image_id,
+        "connected_maps_ids": db_map.connected_maps_ids,
+    }
 
     live_rows = session.exec(
         select(LiveActor)
