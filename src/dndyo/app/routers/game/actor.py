@@ -13,9 +13,11 @@ def create_actor(
     game_id: int = Depends(require_game_id),
     session: Session = Depends(get_session),
 ):
+    # Convert to dict and keep abilities as dicts (not ActorAbility objects)
     payload = actor.model_dump(mode="json")
     payload["game_id"] = game_id
-    db_actor = Actor.model_validate(payload)
+    # Create Actor directly without re-validating (which converts abilities back to objects)
+    db_actor = Actor(**payload)
     session.add(db_actor)
     session.commit()
     session.refresh(db_actor)
